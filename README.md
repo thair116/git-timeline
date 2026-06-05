@@ -5,6 +5,8 @@ interactive HTML retrospective: a hindsight timeline with line-level
 code-survival analysis, a tech-tree DAG of evolving subsystems and dead
 ends, and a Spotify-Wrapped-style story experience.
 
+![git-timeline — each bar is a month; height is lines of code written, the bright fill is what's still alive at HEAD](docs/hero.png)
+
 ## Install
 
 Clone straight into your Claude Code skills directory:
