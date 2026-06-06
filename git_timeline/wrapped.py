@@ -242,6 +242,17 @@ def collect_wrapped_data(conn: sqlite3.Connection) -> dict:
         except json.JSONDecodeError:
             pass
 
+    # Code half-life + survival curve (from the survival_curve stage, if run).
+    hl_row = conn.execute(
+        "SELECT value FROM meta WHERE key = 'code_half_life_months'").fetchone()
+    half_life = float(hl_row["value"]) if hl_row and hl_row["value"] else None
+    sc_row = conn.execute(
+        "SELECT value FROM meta WHERE key = 'code_survival_curve'").fetchone()
+    try:
+        survival_curve = json.loads(sc_row["value"]) if sc_row and sc_row["value"] else []
+    except (json.JSONDecodeError, TypeError):
+        survival_curve = []
+
     # Per-month commits (for sparkline / fallbacks).
     month_series = [
         {"month": r["month"], "commits": r["n"]}
@@ -306,6 +317,8 @@ def collect_wrapped_data(conn: sqlite3.Connection) -> dict:
         "bootstrap": bootstrap,
         "month_series": month_series,
         "timeline_months": timeline_months,
+        "half_life": half_life,
+        "survival_curve": survival_curve,
         "kinds": kinds,
     }
 
@@ -368,6 +381,20 @@ def _cryptic_quip(subject: str) -> str:
     if "cp" == s:
         return "Copy-paste as a verb. Copy-paste as a lifestyle."
     return ""
+
+
+def _halflife_quip(hl: float | None) -> str:
+    if hl is None:
+        return "Most of what you write is still standing. Built to last."
+    if hl < 3:
+        return "You rewrite everything. Half your code doesn't survive a season."
+    if hl < 6:
+        return "Heavy churn — your codebase barely recognizes itself from last quarter."
+    if hl < 12:
+        return "A healthy rate of reinvention. Half-life under a year."
+    if hl < 24:
+        return "Your code has staying power. It outlives most New Year's resolutions."
+    return "Built to last — what you write tends to stick around for years."
 
 
 def _dead_quip(label: str, duration: int) -> str:
@@ -480,6 +507,18 @@ a { color: inherit; }
 
 .bg-churn { background: linear-gradient(155deg, #1a0606 0%, #8b1a1a 60%, #ff6b6b 100%); }
 .bg-churn::before { width: 50vw; height: 50vw; bottom: -15vw; left: -10vw; background: #ffd54f; opacity: 0.25; }
+
+.bg-halflife { background: linear-gradient(150deg, #041a14 0%, #0c5b46 55%, #2fd2a0 100%); }
+.bg-halflife::before { width: 48vw; height: 48vw; top: -16vw; right: -12vw; background: #34d399; opacity: 0.3; }
+
+/* survival curve (reuses render.render_survival_curve_svg output) — dark variant */
+.survcurve { width: 100%; height: auto; display: block; max-width: 540px; margin-top: 26px; }
+.survcurve .gridline { stroke: rgba(255,255,255,0.16); stroke-width: 1; stroke-dasharray: 2 3; }
+.survcurve .gridline.mid { stroke: rgba(255,255,255,0.42); stroke-dasharray: none; }
+.survcurve .axlabel { font-family: "JetBrains Mono", monospace; font-size: 10px; fill: rgba(255,255,255,0.6); }
+.survcurve .axtitle { font-family: "JetBrains Mono", monospace; font-size: 10px; fill: rgba(255,255,255,0.6); }
+.survcurve .hl-line { stroke: rgba(255,255,255,0.65); stroke-dasharray: 3 3; stroke-width: 1; }
+.survcurve .hl-label { font-family: "JetBrains Mono", monospace; font-size: 11px; fill: #fff; }
 
 .bg-pivot { background: linear-gradient(145deg, #0a0a2e 0%, #1e3a8a 55%, #06b6d4 100%); }
 .bg-pivot::before { width: 45vw; height: 45vw; top: -10vw; right: -10vw; background: #7c3aed; opacity: 0.4; }
@@ -640,7 +679,7 @@ def _countup(n: int | float, *, as_float: bool = False) -> str:
 
 def render_wrapped_page(repo_name: str, data: dict, hue: int = 210) -> str:
     # Lazy import to avoid a circular import (render imports wrapped at top).
-    from .render import render_timeline_svg
+    from .render import render_timeline_svg, render_survival_curve_svg
 
     t = data["totals"]
     first = (t.get("first_commit") or "")[:10]
@@ -780,6 +819,27 @@ def render_wrapped_page(repo_name: str, data: dict, hue: int = 210) -> str:
         f'</div>',
         ""
     ))
+
+    # 7b. Code half-life (only if the survival_curve stage has run).
+    sc = data.get("survival_curve") or []
+    if len(sc) >= 2:
+        hl = data.get("half_life")
+        if hl is not None:
+            hl_big = f"{round(hl)}"
+            hl_line = "months until half the code you write is gone."
+        else:
+            hl_big = f">{sc[-1]['age']}"
+            hl_line = "months in — and over half your code is still alive."
+        curve_svg = render_survival_curve_svg(sc, hue, hl)
+        cards.append(_card(
+            "bg-halflife",
+            "your code's half-life",
+            f'<div class="big" style="font-size:clamp(64px,15vw,180px);">{hl_big}</div>'
+            f'<div class="sub" style="margin-top:6px;">{hl_line}</div>'
+            f'{curve_svg}'
+            f'<div class="quip">{_esc(_halflife_quip(hl))}</div>',
+            "every line you write is on the clock"
+        ))
 
     # 8. Biggest pivot.
     p = data["pivot"]

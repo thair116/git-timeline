@@ -61,7 +61,7 @@ Cached stages — reruns cost $0:
 9. **render** — static HTML site with:
    - per-repo page: hero stats (incl. code half-life), stack chips, monthly bar chart (√(LoC added) bar height × survival fill), code-survival curve, SVG DAG, rendered narrative, month detail cards, analysis cost table
    - a multi-repo dashboard
-   - a full-viewport **wrapped** experience with 13 tap-through cards, count-up animations, and a narrative voice that reacts to your data (roasts your cryptic commits, mourns your dead limbs)
+   - a full-viewport **wrapped** experience with tap-through cards (incl. your code half-life), count-up animations, and a narrative voice that reacts to your data (roasts your cryptic commits, mourns your dead limbs)
 
 ## Data locations
 
