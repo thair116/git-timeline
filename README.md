@@ -47,18 +47,19 @@ Claude will invoke the skill, run the pipeline, and open the result.
 
 ## What it does
 
-Nine stages, all cached — reruns cost $0:
+Cached stages — reruns cost $0:
 
 1. **extract** — `git log` → SQLite, one row per commit.
 2. **preview** — offline cost estimate (shows rule-filtered commits).
 3. **bootstrap** — one LLM call reads README + manifests + file tree → project anchor.
 4. **commits** — Haiku summarizes every commit (uses the anchor as system prompt, expands to diff for opaque subjects).
 5. **survival** — line-level `git blame` on HEAD: how much of each month's code still exists.
+5b. **survival_curve** *(optional, slow)* — cohort / Kaplan-Meier code-survival: blames one tree snapshot per month and tracks each cohort's decay, yielding a survival curve S(age) and a **code half-life** (the age at which half a line's-worth of code is gone). Recency-unbiased, unlike the single survival %.
 6. **months** — Sonnet rolls per-commit summaries into monthly themes.
 7. **synthesize** — Opus writes a 1-page hindsight timeline, flagging where narrative and mechanical survival disagree.
 8. **tree** — Sonnet builds a tech-tree DAG: 30–50 technical threads with evolution / replacement / death edges.
 9. **render** — static HTML site with:
-   - per-repo page: hero stats, stack chips, monthly bar chart (√(LoC added) bar height × survival fill), SVG DAG, rendered narrative, month detail cards, analysis cost table
+   - per-repo page: hero stats (incl. code half-life), stack chips, monthly bar chart (√(LoC added) bar height × survival fill), code-survival curve, SVG DAG, rendered narrative, month detail cards, analysis cost table
    - a multi-repo dashboard
    - a full-viewport **wrapped** experience with 13 tap-through cards, count-up animations, and a narrative voice that reacts to your data (roasts your cryptic commits, mourns your dead limbs)
 

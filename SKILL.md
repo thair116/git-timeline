@@ -53,10 +53,11 @@ Data (SQLite + HTML) lands at `~/.git-timeline/` by default. Override with `GIT_
 | 3 | Bootstrap     | `python3 -m git_timeline.bootstrap <repo>`        | Sonnet 4.6  | ~$0.04       | Reads README, manifests, tree → project anchor. |
 | 4 | Commits       | `python3 -m git_timeline.commits <repo> --budget 15` | Haiku 4.5   | ~$0.002/commit | Per-commit summaries. `--budget` caps spend. `--limit N` for a sample first. |
 | 5 | Survival      | `python3 -m git_timeline.survival <repo>`         | —           | $0           | Line-level blame analysis: how much of each month's code survived to HEAD. |
+| 5b| Survival curve| `python3 -m git_timeline.survival_curve <repo>`   | —           | $0 (slow)    | Cohort/Kaplan-Meier code survival: blames a monthly snapshot tree each, yields a survival curve S(age) + a **code half-life**. Compute-heavy (N blames); cached. `--max-snapshots N`, `--workers N`. |
 | 6 | Months        | `python3 -m git_timeline.months <repo>`           | Sonnet 4.6  | ~$0.02/month | Monthly theme rollups. |
 | 7 | Synthesize    | `python3 -m git_timeline.synthesize <repo>`       | Opus 4.8    | ~$0.30       | One-page hindsight timeline. |
 | 8 | Tree          | `python3 -m git_timeline.tree <repo>`             | Sonnet 4.6  | ~$0.09       | Tech-tree DAG (threads + dead ends). |
-| 9 | Render        | `python3 -m git_timeline.render`                  | —           | $0           | Emits HTML site for ALL analyzed repos. Timeline bars are √(LoC added) × survival. |
+| 9 | Render        | `python3 -m git_timeline.render`                  | —           | $0           | Emits HTML site for ALL analyzed repos. Timeline bars are √(LoC added) × survival; adds code-survival-curve + half-life if stage 5b ran. |
 
 Model/cost columns above are for **API mode**. In **in-session mode** every LLM stage costs $0 API spend and instead pauses for you to answer prompts (see below).
 
@@ -121,8 +122,8 @@ Safe to re-run any stage. The content-hash cache means unchanged inputs cost $0.
 extract  →  preview (optional)
 extract  →  bootstrap  →  commits  →  months  →  synthesize ─┐
 extract  →  survival                                          ├→  tree  →  render
-                                                              │
+extract  →  survival_curve (optional, slow)                   │
                                                   months  ────┘
 ```
 
-Survival is standalone (needs only commits table). Render reads whatever is present and degrades gracefully if a stage is missing.
+Survival and survival_curve are standalone (need only the commits table + the repo on disk). survival_curve is the slowest stage (one full-tree `git blame` per monthly snapshot) and is optional — skip it for a quick run; the report just omits the survival-curve section and half-life stat. Render reads whatever is present and degrades gracefully if a stage is missing.

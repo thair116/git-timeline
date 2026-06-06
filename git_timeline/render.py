@@ -293,6 +293,7 @@ _ICONS = {
     "authors": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg>',
     "loc": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="8.5 7 3.5 12 8.5 17"/><polyline points="15.5 7 20.5 12 15.5 17"/></svg>',
     "written": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/><line x1="14" y1="6" x2="17.5" y2="9.5"/></svg>',
+    "halflife": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
 }
 
 
@@ -320,7 +321,7 @@ def _stat(icon: str, value, label: str, *, hero: bool = False) -> str:
 
 
 def build_stat_strip(totals: dict, total_loc: int, global_surv: float | None,
-                     hue: int = 200) -> str:
+                     half_life_disp: str | None = None, hue: int = 200) -> str:
     """Two clusters: Activity (commits/months/authors) and Code (written/current/survival)."""
     lines_written = totals.get("total_ins") or 0
     activity = "".join([
@@ -328,11 +329,14 @@ def build_stat_strip(totals: dict, total_loc: int, global_surv: float | None,
         _stat(_ICONS["months"], totals.get("months", 0), "months"),
         _stat(_ICONS["authors"], totals.get("authors", 0), "authors"),
     ])
-    code = "".join([
+    code_stats = [
         _stat(_ICONS["written"], fmt_loc(lines_written), "lines written"),
         _stat(_ICONS["loc"], fmt_loc(total_loc), "current LoC"),
         _stat(_survival_ring(global_surv, hue), fmt_pct(global_surv), "survival", hero=True),
-    ])
+    ]
+    if half_life_disp:  # only when the survival_curve stage has run
+        code_stats.append(_stat(_ICONS["halflife"], half_life_disp, "code half-life"))
+    code = "".join(code_stats)
     return (
         '<div class="stat-strip clustered">'
         f'<div class="stat-group"><div class="sg-label">Activity</div>'
@@ -451,6 +455,58 @@ def render_timeline_svg(months: list[dict], hue: int) -> str:
 
     svg.append("</svg>")
     return "\n".join(svg)
+
+
+def render_survival_curve_svg(curve: list[dict], hue: int,
+                             half_life: float | None) -> str:
+    """Line+area chart of S(age): share of code still alive `age` months after writing."""
+    if len(curve) < 2:
+        return ""
+    W, H, PAD, LPAD, BPAD = 720, 240, 20, 46, 38
+    cw, ch = W - LPAD - PAD, H - PAD - BPAD
+    max_age = max(p["age"] for p in curve) or 1
+    acc = f"hsl({hue} 75% 62%)"
+
+    def X(age):
+        return LPAD + cw * (age / max_age)
+
+    def Y(s):
+        return PAD + ch * (1 - s)
+
+    p = [f'<svg viewBox="0 0 {W} {H}" class="survcurve" role="img" '
+         f'aria-label="Code survival curve">']
+    for frac in (0.0, 0.25, 0.5, 0.75, 1.0):
+        y = Y(frac)
+        cls = "gridline mid" if frac == 0.5 else "gridline"
+        p.append(f'<line x1="{LPAD}" x2="{W - PAD}" y1="{y:.1f}" y2="{y:.1f}" class="{cls}"/>')
+        p.append(f'<text x="{LPAD - 8}" y="{y + 3:.1f}" class="axlabel" '
+                 f'text-anchor="end">{int(frac * 100)}%</text>')
+    step = max(1, round(max_age / 6))
+    age = 0
+    while age <= max_age:
+        p.append(f'<text x="{X(age):.1f}" y="{H - BPAD + 17:.1f}" class="axlabel" '
+                 f'text-anchor="middle">{age}</text>')
+        age += step
+    p.append(f'<text x="{(LPAD + W - PAD) / 2:.1f}" y="{H - 5:.1f}" class="axtitle" '
+             f'text-anchor="middle">months after a line is written</text>')
+
+    pts = [(X(q["age"]), Y(q["survival"])) for q in curve]
+    line = "M " + " L ".join(f"{x:.1f} {y:.1f}" for x, y in pts)
+    p.append(f'<path d="{line} L {pts[-1][0]:.1f} {Y(0):.1f} '
+             f'L {pts[0][0]:.1f} {Y(0):.1f} Z" fill="{acc}" opacity="0.12"/>')
+    p.append(f'<path d="{line}" fill="none" stroke="{acc}" stroke-width="2.2" '
+             f'stroke-linejoin="round"/>')
+    for x, y in pts:
+        p.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="2.5" fill="{acc}"/>')
+    if half_life is not None and half_life <= max_age:
+        hx, hy = X(half_life), Y(0.5)
+        p.append(f'<line x1="{hx:.1f}" x2="{hx:.1f}" y1="{Y(0):.1f}" y2="{hy:.1f}" class="hl-line"/>')
+        p.append(f'<circle cx="{hx:.1f}" cy="{hy:.1f}" r="4" fill="{acc}" '
+                 f'stroke="var(--bg)" stroke-width="1.5"/>')
+        p.append(f'<text x="{hx + 7:.1f}" y="{hy - 8:.1f}" class="hl-label">'
+                 f'half-life ≈ {half_life:.1f} mo</text>')
+    p.append("</svg>")
+    return "".join(p)
 
 
 # ---------------------------------------------------------------------------
@@ -905,6 +961,14 @@ h3 { font-size: 1.1rem; margin-top: 1.2rem; }
 .timeline .monthlabel.dim { fill: var(--fg-mute); }
 .timeline .bar-hit { cursor: pointer; }
 .timeline .bar-hit:hover ~ .bar-surv { opacity: 1; }
+
+.survcurve { width: 100%; height: auto; display: block; max-width: 760px; margin-top: 10px; }
+.survcurve .gridline { stroke: var(--border); stroke-width: 1; stroke-dasharray: 2 3; }
+.survcurve .gridline.mid { stroke: var(--fg-mute); stroke-dasharray: none; opacity: 0.45; }
+.survcurve .axlabel { font-family: var(--mono); font-size: 10px; fill: var(--fg-mute); }
+.survcurve .axtitle { font-family: var(--mono); font-size: 10px; fill: var(--fg-mute); letter-spacing: 0.06em; }
+.survcurve .hl-line { stroke: hsl(var(--accent) 75% 62%); stroke-dasharray: 3 3; stroke-width: 1; opacity: 0.7; }
+.survcurve .hl-label { font-family: var(--mono); font-size: 11px; fill: hsl(var(--accent) 75% 72%); }
 .legend { display: flex; gap: 16px; margin-top: 12px; flex-wrap: wrap; font-size: 0.85rem; color: var(--fg-dim); }
 .legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
 .legend .swatch.dim { opacity: 0.35; }
@@ -1075,7 +1139,33 @@ def render_repo_page(repo_name: str, data: dict) -> str:
     # (Not the mean of monthly ratios — that over-weights tiny months.)
     total_ins = totals.get("total_ins") or 0
     global_surv = (total_loc / total_ins) if total_ins else None
-    stat_strip = build_stat_strip(totals, total_loc, global_surv, hue)
+
+    # Code half-life + survival curve (from the survival_curve stage, if run).
+    try:
+        surv_curve = json.loads(data["meta"].get("code_survival_curve") or "[]")
+    except (json.JSONDecodeError, TypeError):
+        surv_curve = []
+    hl_raw = data["meta"].get("code_half_life_months") or ""
+    half_life = float(hl_raw) if hl_raw else None
+    if half_life is not None:
+        half_life_disp = f"{half_life:.0f} mo" if half_life >= 1.5 else f"{half_life:.1f} mo"
+    elif surv_curve:
+        half_life_disp = f">{surv_curve[-1]['age']} mo"
+    else:
+        half_life_disp = None  # stage not run → stat hidden
+
+    stat_strip = build_stat_strip(totals, total_loc, global_surv, half_life_disp, hue)
+    survival_curve_svg = render_survival_curve_svg(surv_curve, hue, half_life)
+    survival_curve_section = (
+        '<section class="section"><div class="container">'
+        '<h2>Code survival curve</h2>'
+        '<p class="lede">How long a line of code actually lives: the share still present '
+        'at HEAD <em>N months after it was written</em>, pooled across every month\'s '
+        'cohort and weighted by size. Unlike a single survival % this isn\'t '
+        'recency-biased — recent code only contributes to the early ages (it hasn\'t had '
+        'time to die). The <strong>half-life</strong> is where the curve crosses 50%.</p>'
+        f'{survival_curve_svg}</div></section>'
+    ) if survival_curve_svg else ''
 
     # Timeline viz.
     timeline_svg = render_timeline_svg(months, hue)
@@ -1207,6 +1297,8 @@ def render_repo_page(repo_name: str, data: dict) -> str:
       </div>
     </div>
   </section>
+
+  {survival_curve_section}
 
   {'<section class="section"><div class="container"><h2>Tech tree</h2><p class="lede">Technical threads (subsystems, framework choices, experiments) as a DAG. Horizontal position follows time; nodes span from when a thread appeared to when it was replaced or abandoned. Live threads extend to HEAD. Dead limbs end with ×. Evolution edges (green) show same-thread maturation; replacement edges (amber, dashed) show one tech supplanting another.</p>' + tree_html + '</div></section>' if tree_html else ''}
 
