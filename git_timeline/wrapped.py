@@ -716,7 +716,28 @@ def render_wrapped_page(repo_name: str, data: dict, hue: int = 210) -> str:
         "tap or press → to explore it, month by month"
     ))
 
-    # 2. Total commits + cadence (sparkline dropped — the headline chart above
+    # 2. Code half-life (only if the survival_curve stage has run).
+    sc = data.get("survival_curve") or []
+    if len(sc) >= 2:
+        hl = data.get("half_life")
+        if hl is not None:
+            hl_big = f"{round(hl)}"
+            hl_line = "months until half the code you write is gone."
+        else:
+            hl_big = f">{sc[-1]['age']}"
+            hl_line = "months in — and over half your code is still alive."
+        curve_svg = render_survival_curve_svg(sc, hue, hl)
+        cards.append(_card(
+            "bg-halflife",
+            "your code's half-life",
+            f'<div class="big" style="font-size:clamp(64px,15vw,180px);">{hl_big}</div>'
+            f'<div class="sub" style="margin-top:6px;">{hl_line}</div>'
+            f'{curve_svg}'
+            f'<div class="quip">{_esc(_halflife_quip(hl))}</div>',
+            "every line you write is on the clock"
+        ))
+
+    # 3. Total commits + cadence (sparkline dropped — the headline chart above
     #    already shows monthly volume, in richer form).
     per_week = data["commits_per_week"]
     pace_flav = _pace_flavor(per_week)
@@ -819,27 +840,6 @@ def render_wrapped_page(repo_name: str, data: dict, hue: int = 210) -> str:
         f'</div>',
         ""
     ))
-
-    # 7b. Code half-life (only if the survival_curve stage has run).
-    sc = data.get("survival_curve") or []
-    if len(sc) >= 2:
-        hl = data.get("half_life")
-        if hl is not None:
-            hl_big = f"{round(hl)}"
-            hl_line = "months until half the code you write is gone."
-        else:
-            hl_big = f">{sc[-1]['age']}"
-            hl_line = "months in — and over half your code is still alive."
-        curve_svg = render_survival_curve_svg(sc, hue, hl)
-        cards.append(_card(
-            "bg-halflife",
-            "your code's half-life",
-            f'<div class="big" style="font-size:clamp(64px,15vw,180px);">{hl_big}</div>'
-            f'<div class="sub" style="margin-top:6px;">{hl_line}</div>'
-            f'{curve_svg}'
-            f'<div class="quip">{_esc(_halflife_quip(hl))}</div>',
-            "every line you write is on the clock"
-        ))
 
     # 8. Biggest pivot.
     p = data["pivot"]
